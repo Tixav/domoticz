@@ -259,6 +259,19 @@ namespace mcp		// Model Context Protocol
 		tool["inputSchema"]["properties"]["sensorname"]["description"] = "Name of the sensor to query";
 		tool["inputSchema"]["required"].append("sensorname");
 		jsonRPCRep["result"]["tools"].append(tool);
+		// Set Setpoint Value tool
+		tool.clear();
+		tool["name"] = "set_setpoint_value";
+		tool["title"] = "Set the target setpoint of a thermostat in the system";
+		tool["description"] = "Set the target setpoint of a given thermostat in the system";
+		tool["inputSchema"]["type"] = "object";
+		tool["inputSchema"]["properties"]["thermostatname"]["type"] = "string";
+		tool["inputSchema"]["properties"]["thermostatname"]["description"] = "Name of the thermostat to set";
+		tool["inputSchema"]["properties"]["setpoint"]["type"] = "number";
+		tool["inputSchema"]["properties"]["setpoint"]["description"] = "Temperature setpoint as an number";
+		tool["inputSchema"]["required"].append("thermostatname");
+		tool["inputSchema"]["required"].append("setpoint");
+		jsonRPCRep["result"]["tools"].append(tool);
 		// Get logging tool
 		tool.clear();
 		tool["name"] = "get_logging";
@@ -319,6 +332,15 @@ namespace mcp		// Model Context Protocol
 			{
 				jsonRPCRep["error"]["code"] = JSONRPC_INVALID_PARAMETER;
 				jsonRPCRep["error"]["message"] = "Error getting sensor value";
+				return;
+			}
+		}
+		else if (sMethodName == "set_setpoint_value")
+		{
+			if (!mcp::setThermostatSetpoint(jsonRequest, jsonRPCRep))
+			{
+				jsonRPCRep["error"]["code"] = JSONRPC_INVALID_PARAMETER;
+				jsonRPCRep["error"]["message"] = "Error setting thermostat setpoint";
 				return;
 			}
 		}
@@ -792,6 +814,33 @@ namespace mcp		// Model Context Protocol
 		jsonRPCRep["result"]["content"].append(tool);
 		jsonRPCRep["result"]["isError"] = !bFound;
 		return bFound;
+	}
+
+	bool setThermostatSetpoint(const Json::Value& jsonRequest, Json::Value& jsonRPCRep)
+	{
+		if (!jsonRequest["params"].isMember("arguments") || !jsonRequest["params"]["arguments"].isMember("thermostatname") || !jsonRequest["params"]["arguments"].isMember("setpoint"))
+		{
+			_log.Debug(DEBUG_WEBSERVER, "MCP: setThermostatSetpoint: Missing required parameter 'thermostatname/setpoint'");
+			return false;
+		}
+		std::string sThermostatName = jsonRequest["params"]["arguments"]["thermostatname"].asString();
+		float fNewSetpoint = (float)atof(jsonRequest["params"]["arguments"]["setpoint"].asString().c_str());
+		std::string sThermostatState = "No thermostat exists with the name " + sThermostatName;
+		Json::Value device;
+		bool bFound = getDeviceByName(sThermostatName, device);
+		if (bFound)
+		{
+			sThermostatState = "The value of thermostat \"" + sThermostatName + "\" before setting was: " + device["Data"].asString() + ". ";
+			bFound = true;
+			sThermostatState += (m_mainworker.SetSetPoint(device["idx"].asString(), fNewSetpoint) == false ? "Error setting the setpoint." : "Setpoint set successfully.");
+		}
+		Json::Value tool;
+		tool["type"] = "text";
+		tool["text"] = sThermostatState;
+		jsonRPCRep["result"]["content"] = Json::Value(Json::arrayValue);
+		jsonRPCRep["result"]["content"].append(tool);
+		jsonRPCRep["result"]["isError"] = !bFound;
+		return true;
 	}
 
 	bool getDeviceByName(const std::string &sDeviceName, Json::Value &device)
